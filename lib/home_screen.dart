@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'core.dart';
 import 'board.dart';
 
@@ -11,6 +12,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   void _startGame([int? level]) {
+    HapticFeedback.selectionClick();
     final targetLevel = level ?? LevelProgress.highestUnlockedLevel;
     Navigator.of(context)
         .push(
@@ -24,17 +26,8 @@ class _HomeScreenState extends State<HomeScreen> {
         });
   }
 
-  void _openLevelSelect() {
-    showLevelSelectSheet(
-      context: context,
-      currentLevel: LevelProgress.highestUnlockedLevel,
-      onSelectLevel: (lvl) {
-        _startGame(lvl);
-      },
-    );
-  }
-
   void _showHowToPlay() {
+    HapticFeedback.selectionClick();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -175,41 +168,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _confirmResetProgress() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text('Reset All Progress?'),
-        content: const Text(
-          'This will lock all puzzles and reset your progress back to Stage 1.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFE53935),
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () {
-              LevelProgress.reset();
-              Navigator.of(ctx).pop();
-              setState(() {});
-            },
-            child: const Text('Reset'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final currentUnlocked = LevelProgress.highestUnlockedLevel;
-    final levelConfig = LevelConfig.forLevel(currentUnlocked);
 
     return Scaffold(
       body: Container(
@@ -256,21 +217,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 28.0),
                 child: Column(
                   children: [
-                    // Top Bar with optional reset / settings
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        IconButton(
-                          icon: const Icon(
-                            Icons.refresh_rounded,
-                            color: Colors.white54,
-                          ),
-                          tooltip: 'Reset Progress',
-                          onPressed: _confirmResetProgress,
-                        ),
-                      ],
-                    ),
-
                     const Spacer(flex: 1),
 
                     // Hero Logo & Title
@@ -364,24 +310,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: Colors.white.withValues(alpha: 0.12),
                         ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.military_tech_rounded,
-                            color: Color(0xFFFFB703),
-                            size: 22,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Stage $currentUnlocked • ${levelConfig.shape.name}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        'Level $currentUnlocked',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
                       ),
                     ),
 
@@ -411,50 +346,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             const Icon(Icons.play_arrow_rounded, size: 30),
                             const SizedBox(width: 8),
                             Text(
-                              currentUnlocked == 1
-                                  ? 'PLAY GAME'
-                                  : 'CONTINUE',
+                              currentUnlocked == 1 ? 'PLAY GAME' : 'CONTINUE',
                               style: const TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 1.0,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // 2. Select Level Secondary Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            width: 1.5,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          backgroundColor: Colors.white.withValues(alpha: 0.06),
-                        ),
-                        onPressed: _openLevelSelect,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Icon(Icons.grid_view_rounded, size: 20),
-                            SizedBox(width: 8),
-                            Text(
-                              'SELECT PUZZLE',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.8,
                               ),
                             ),
                           ],

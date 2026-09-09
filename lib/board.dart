@@ -12,6 +12,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'core.dart';
 import 'path_painter.dart';
 
@@ -127,6 +128,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
     final result = _board.tap(arrow.path.first);
     switch (result) {
       case TapResult.cleared:
+        HapticFeedback.mediumImpact();
         setState(() {
           _exiting.add(arrow);
           _blockedArrows.remove(arrow);
@@ -134,6 +136,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
         });
         break;
       case TapResult.blocked:
+        HapticFeedback.heavyImpact();
         final alreadyBlocked = _blockedArrows.contains(arrow);
         setState(() {
           if (!alreadyBlocked) {
@@ -161,6 +164,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
     _didHold = false;
     _holdTimer = Timer(const Duration(milliseconds: 140), () {
       if (!mounted) return;
+      HapticFeedback.selectionClick();
       setState(() {
         _heldArrow = arrow;
         _didHold = true;
@@ -297,9 +301,13 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
     }
   }
 
-  void _useHint() => setState(() => _hintArrow = _board.hint());
+  void _useHint() {
+    HapticFeedback.selectionClick();
+    setState(() => _hintArrow = _board.hint());
+  }
 
   void _showWinDialog() {
+    HapticFeedback.mediumImpact();
     LevelProgress.completeLevel(_currentLevel);
     final stars = _score.stars;
     showDialog(
@@ -352,6 +360,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
             onPressed: () {
+              HapticFeedback.selectionClick();
               Navigator.of(context).pop();
               loadLevelNumber(_currentLevel + 1);
             },
@@ -366,6 +375,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
   }
 
   void _showFailDialog() {
+    HapticFeedback.vibrate();
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -376,6 +386,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
         actions: [
           TextButton(
             onPressed: () {
+              HapticFeedback.selectionClick();
               Navigator.of(context).pop();
               loadLevelNumber(_currentLevel);
             },
@@ -398,38 +409,59 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F7),
       appBar: AppBar(
+        bottom: PreferredSize(
+          preferredSize: const Size(0, 25),
+          child: Text(
+            'Level $_currentLevel',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1A1A2E),
+            ),
+          ),
+        ),
         elevation: 0,
         backgroundColor: Colors.transparent,
+        centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           tooltip: 'Home',
           onPressed: () {
+            HapticFeedback.selectionClick();
             if (Navigator.of(context).canPop()) {
               Navigator.of(context).pop();
             }
           },
         ),
-        actions: [
-          Row(
-            children: List.generate(
-              3,
-              (i) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                child: Icon(
-                  Icons.favorite,
-                  color: i < (3 - _score.heartsLost)
-                      ? Colors.redAccent
-                      : Colors.grey.shade400,
-                  size: 20,
+        title: Column(
+          children: [
+            Row(
+              mainAxisAlignment: .center,
+              children: List.generate(
+                3,
+                (i) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                  child: Icon(
+                    Icons.favorite,
+                    color: i < (3 - _score.heartsLost)
+                        ? Colors.red
+                        : Colors.grey.shade400,
+                    size: 24,
+                  ),
                 ),
               ),
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Restart',
-            onPressed: () => loadLevelNumber(_currentLevel),
-          ),
+          ],
+        ),
+        actions: [
+          // IconButton(
+          //   icon: const Icon(Icons.refresh_rounded),
+          //   tooltip: 'Restart',
+          //   onPressed: () {
+          //     HapticFeedback.selectionClick();
+          //     loadLevelNumber(_currentLevel);
+          //   },
+          // ),
           IconButton(
             icon: const Icon(Icons.lightbulb_outline),
             tooltip: 'Hint',
@@ -449,10 +481,10 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
 
           return InteractiveViewer(
             transformationController: _transformationController,
-            clipBehavior: Clip.none,
-            minScale: 0.4,
-            maxScale: 6.0,
-            boundaryMargin: const EdgeInsets.all(200),
+            clipBehavior: .none,
+            minScale: 1,
+            maxScale: 2.5,
+            boundaryMargin: const .all(200),
             panEnabled: true,
             scaleEnabled: true,
             child: Center(
@@ -531,10 +563,6 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
         break;
     }
 
-    final isClear = _board.pathIsClear(arrow);
-    // final rayColor = isClear
-    //     ? const Color(0xFF10B981) // Clean emerald green if exit is clear
-    //     : const Color(0xFFFF5376); // Vibrant coral pink if blocked by obstacles
     const rayColor = Colors.lightBlue;
 
     return Positioned.fill(
@@ -609,7 +637,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
       arrow: arrow,
       cellSize: cellSize,
       totalSteps: totalSteps,
-      duration: Duration(milliseconds: 35 * totalSteps),
+      duration: Duration(milliseconds: 50 * totalSteps),
       onComplete: () {
         if (!mounted) return;
         setState(() {
