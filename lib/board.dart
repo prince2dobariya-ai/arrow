@@ -32,14 +32,22 @@ class ArrowPuzzleScreen extends StatefulWidget {
   State<ArrowPuzzleScreen> createState() => _ArrowPuzzleScreenState();
 }
 
-class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
+class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
+    with SingleTickerProviderStateMixin {
   late Board _board;
   late int _currentLevel;
   final LevelScore _score = LevelScore();
   late final TransformationController _transformationController;
 
+  late final AnimationController _introController;
+  late final Animation<double> _boardZoomAnimation;
+  late final Animation<double> _boardFadeAnimation;
+
   // Arrows currently playing their snake-track exit animation.
   final Set<Arrow> _exiting = {};
+
+  // Red arrows that are currently playing their snake-track exit animation.
+  final Set<Arrow> _exitingRedArrows = {};
 
   // Arrows that failed validation on tap (turned red). Subsequent taps
   // on these arrows will not decrease player's life.
@@ -57,6 +65,20 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
   void initState() {
     super.initState();
     _transformationController = TransformationController();
+    _introController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    );
+    _boardZoomAnimation = Tween<double>(begin: 1.5, end: 0.9).animate(
+      CurvedAnimation(parent: _introController, curve: Curves.easeOutCubic),
+    );
+    _boardFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _introController,
+        curve: const Interval(0.0, 0.35, curve: Curves.easeOut),
+      ),
+    );
+
     if (widget.initialUnlockedLevel != null) {
       LevelProgress.highestUnlockedLevel = max(
         LevelProgress.highestUnlockedLevel,
@@ -65,6 +87,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
     }
     _currentLevel = widget.initialLevel;
     _board = widget.board ?? LevelGenerator.generateLevel(_currentLevel);
+    _introController.forward();
   }
 
   /// Loads a specific level number if unlocked, generating its deterministic full board.
@@ -88,10 +111,12 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
     _transformationController.value = Matrix4.identity();
     _holdTimer?.cancel();
     _holdTimer = null;
+    _introController.forward(from: 0.0);
     setState(() {
       _currentLevel = nextLevel;
       _board = newBoard;
       _exiting.clear();
+      _exitingRedArrows.clear();
       _blockedArrows.clear();
       _hintArrow = null;
       _shakeArrow = null;
@@ -109,16 +134,58 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
     _transformationController.value = Matrix4.identity();
     _holdTimer?.cancel();
     _holdTimer = null;
+    _introController.forward(from: 0.0);
     setState(() {
       if (levelNumber != null) _currentLevel = levelNumber;
       _board = newBoard;
       _exiting.clear();
+      _exitingRedArrows.clear();
       _blockedArrows.clear();
       _hintArrow = null;
       _shakeArrow = null;
       _heldArrow = null;
       _didHold = false;
       _score.heartsLost = 0;
+    });
+  }
+
+  void _checkAutoExitBlockedArrows() {
+    if (!mounted || _blockedArrows.isEmpty) return;
+
+    final unblocked = <Arrow>[];
+    for (final arrow in _blockedArrows) {
+      if (_board.pathIsClear(arrow)) {
+        unblocked.add(arrow);
+      }
+    }
+
+    if (unblocked.isEmpty) return;
+
+    final currentBoard = _board;
+    for (int i = 0; i < unblocked.length; i++) {
+      final arrow = unblocked[i];
+      // Immediately remove from board model so subsequent arrows know the path is clear
+      _board.arrows.remove(arrow);
+      _board.solutionOrder.remove(arrow);
+      _blockedArrows.remove(arrow);
+      _exitingRedArrows.add(arrow);
+      if (_hintArrow == arrow) _hintArrow = null;
+      if (_heldArrow == arrow) _heldArrow = null;
+      if (_shakeArrow == arrow) _shakeArrow = null;
+
+      Future.delayed(Duration(milliseconds: 100 * (i + 1)), () {
+        if (!mounted || _board != currentBoard) return;
+        HapticFeedback.mediumImpact();
+        setState(() {
+          _exiting.add(arrow);
+        });
+      });
+    }
+
+    // Check again in case unblocking these red arrows unblocked further red arrows
+    Future.delayed(Duration(milliseconds: 100 * unblocked.length + 40), () {
+      if (!mounted || _board != currentBoard) return;
+      _checkAutoExitBlockedArrows();
     });
   }
 
@@ -129,11 +196,16 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
     switch (result) {
       case TapResult.cleared:
         HapticFeedback.mediumImpact();
+        final wasBlocked = _blockedArrows.contains(arrow);
+        if (wasBlocked) {
+          _exitingRedArrows.add(arrow);
+        }
         setState(() {
           _exiting.add(arrow);
           _blockedArrows.remove(arrow);
           _hintArrow = null;
         });
+        _checkAutoExitBlockedArrows();
         break;
       case TapResult.blocked:
         HapticFeedback.heavyImpact();
@@ -159,6 +231,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
   }
 
   void _onArrowTapDown(Arrow arrow) {
+    if (_introController.isAnimating && _introController.value < 0.85) return;
     if (_exiting.contains(arrow)) return;
     _holdTimer?.cancel();
     _didHold = false;
@@ -308,8 +381,8 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
 
   void _showWinDialog() {
     HapticFeedback.mediumImpact();
-    LevelProgress.completeLevel(_currentLevel);
     final stars = _score.stars;
+    LevelProgress.completeLevel(_currentLevel, stars);
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -319,9 +392,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
           child: Column(
             children: [
               Text(
-                _board.shapeName != null
-                    ? '${_board.shapeName} Cleared!'
-                    : 'Cleared!',
+                'Level $_currentLevel Cleared!',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 22,
@@ -340,13 +411,52 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
                   );
                 }),
               ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF9E6),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFFFFD166),
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.stars_rounded,
+                      color: Color(0xFFF59E0B),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '+$stars',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFB45309),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
-        content: Text(
-          'Rating: ${_score.rating}',
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 16, color: Colors.black87),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Rating: ${_score.rating}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16, color: Colors.black87),
+            ),
+          ],
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -397,8 +507,28 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
     );
   }
 
+  double _calculateArrowProgress(Arrow arrow, double introProgress) {
+    if (introProgress >= 1.0) return 1.0;
+    if (introProgress <= 0.0) return 0.0;
+
+    final centerR = _board.rows / 2.0;
+    final centerC = _board.cols / 2.0;
+    final maxDist = sqrt(centerR * centerR + centerC * centerC);
+
+    final head = arrow.path.last;
+    final dist = sqrt(
+      pow(head.row + 0.5 - centerR, 2) + pow(head.col + 0.5 - centerC, 2),
+    );
+    final normDist = (dist / max(1.0, maxDist)).clamp(0.0, 1.0);
+
+    final start = normDist * 0.25;
+    final progress = ((introProgress - start) / 0.70).clamp(0.0, 1.0);
+    return Curves.easeOutCubic.transform(progress);
+  }
+
   @override
   void dispose() {
+    _introController.dispose();
     _holdTimer?.cancel();
     _transformationController.dispose();
     super.dispose();
@@ -407,16 +537,23 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F7),
       appBar: AppBar(
         bottom: PreferredSize(
-          preferredSize: const Size(0, 25),
-          child: Text(
-            'Level $_currentLevel',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1A1A2E),
+          preferredSize: const Size(0, 32),
+          child: Row(
+            mainAxisAlignment: .center,
+            children: List.generate(
+              3,
+              (i) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                child: Icon(
+                  Icons.favorite,
+                  color: i < (3 - _score.heartsLost)
+                      ? Colors.red
+                      : Colors.grey.shade400,
+                  size: 24,
+                ),
+              ),
             ),
           ),
         ),
@@ -433,39 +570,99 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
             }
           },
         ),
-        title: Column(
-          children: [
-            Row(
-              mainAxisAlignment: .center,
-              children: List.generate(
-                3,
-                (i) => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                  child: Icon(
-                    Icons.favorite,
-                    color: i < (3 - _score.heartsLost)
-                        ? Colors.red
-                        : Colors.grey.shade400,
-                    size: 24,
-                  ),
-                ),
-              ),
-            ),
-          ],
+        title: Text(
+          'Level $_currentLevel',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF1A1A2E),
+          ),
         ),
         actions: [
-          // IconButton(
-          //   icon: const Icon(Icons.refresh_rounded),
-          //   tooltip: 'Restart',
-          //   onPressed: () {
-          //     HapticFeedback.selectionClick();
-          //     loadLevelNumber(_currentLevel);
-          //   },
-          // ),
-          IconButton(
-            icon: const Icon(Icons.lightbulb_outline),
-            tooltip: 'Hint',
-            onPressed: _useHint,
+          ValueListenableBuilder<int>(
+            valueListenable: StarMoney.notifier,
+            builder: (context, balance, _) {
+              return Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  spacing: 4,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.stars_rounded,
+                      size: 15,
+                      color: Color(0xFFF59E0B),
+                    ),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      transitionBuilder: (child, animation) =>
+                          ScaleTransition(scale: animation, child: child),
+                      child: Text(
+                        '$balance',
+                        key: ValueKey(balance),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1A1A2E),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          Container(
+            margin: .only(right: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              spacing: 4,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.near_me_rounded,
+                  size: 13,
+                  color: Color(0xFF3B82F6),
+                ),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  transitionBuilder: (child, animation) =>
+                      ScaleTransition(scale: animation, child: child),
+                  child: Text(
+                    '${_board.arrows.length}',
+                    key: ValueKey(_board.arrows.length),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1A1A2E),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -488,44 +685,136 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
             panEnabled: true,
             scaleEnabled: true,
             child: Center(
-              child: SizedBox(
-                width: boardWidth,
-                height: boardHeight,
-                child: KeyedSubtree(
-                  key: ValueKey(_board),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      CustomPaint(
-                        size: Size(boardWidth, boardHeight),
-                        painter: DottedGridPainter(
-                          rows: _board.rows,
-                          cols: _board.cols,
-                          cellSize: cellSize,
-                          activeCells: _board.activeCells,
-                          occupiedCells: {
-                            for (final a in _board.arrows) ...a.path,
-                          },
+              child: AnimatedBuilder(
+                animation: _introController,
+                builder: (context, _) {
+                  final introVal = _introController.value;
+                  return Transform.scale(
+                    scale: _boardZoomAnimation.value,
+                    alignment: .center,
+                    child: Opacity(
+                      opacity: _boardFadeAnimation.value,
+                      child: SizedBox(
+                        width: boardWidth,
+                        height: boardHeight,
+                        child: KeyedSubtree(
+                          key: ValueKey(_board),
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              CustomPaint(
+                                size: Size(boardWidth, boardHeight),
+                                painter: DottedGridPainter(
+                                  rows: _board.rows,
+                                  cols: _board.cols,
+                                  cellSize: cellSize,
+                                  progress: introVal,
+                                  activeCells: _board.activeCells,
+                                  occupiedCells: {
+                                    for (final a in _board.arrows) ...a.path,
+                                  },
+                                ),
+                              ),
+                              if (_heldArrow != null)
+                                _buildTrajectoryRay(
+                                  _heldArrow!,
+                                  cellSize,
+                                  boardWidth,
+                                  boardHeight,
+                                ),
+                              for (final arrow in _board.arrows)
+                                _buildRestingArrowTile(
+                                  arrow,
+                                  cellSize,
+                                  progress: _calculateArrowProgress(
+                                    arrow,
+                                    introVal,
+                                  ),
+                                ),
+                              for (final arrow in _exiting)
+                                _buildExitingArrowTile(arrow, cellSize),
+                            ],
+                          ),
                         ),
                       ),
-                      if (_heldArrow != null)
-                        _buildTrajectoryRay(
-                          _heldArrow!,
-                          cellSize,
-                          boardWidth,
-                          boardHeight,
-                        ),
-                      for (final arrow in _board.arrows)
-                        _buildRestingArrowTile(arrow, cellSize),
-                      for (final arrow in _exiting)
-                        _buildExitingArrowTile(arrow, cellSize),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               ),
             ),
           );
         },
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const .symmetric(horizontal: 24, vertical: 12),
+          child: Column(
+            spacing: 6,
+            mainAxisSize: .min,
+            children: [
+              Row(
+                mainAxisAlignment: .center,
+                spacing: 4,
+                children: [
+                  Icon(Icons.pinch_outlined, size: 12, color: Colors.grey),
+                  Text(
+                    "Pinch & zoom the board",
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+              Row(
+                spacing: 24,
+                mainAxisAlignment: .center,
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: .circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.refresh_rounded),
+                      iconSize: 26,
+                      color: const Color(0xFF1A1A2E),
+                      tooltip: 'Restart',
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        loadLevelNumber(_currentLevel);
+                      },
+                    ),
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.lightbulb_outline),
+                      iconSize: 26,
+                      color: const Color(0xFF1A1A2E),
+                      tooltip: 'Hint',
+                      onPressed: _useHint,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -543,8 +832,8 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
     final dirNorm = _directionUnitOffset(arrow.headDirection);
 
     final double headExtension = arrow.path.length == 1
-        ? (cellSize * 0.60).clamp(10.0, 24.0) * 0.5
-        : (cellSize * 0.28);
+        ? (cellSize * 0.68).clamp(12.0, 32.0) * 0.5
+        : (cellSize * 0.32);
     final tip = headCenter + dirNorm * headExtension;
 
     final Offset rayEnd;
@@ -580,7 +869,11 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
     );
   }
 
-  Widget _buildRestingArrowTile(Arrow arrow, double cellSize) {
+  Widget _buildRestingArrowTile(
+    Arrow arrow,
+    double cellSize, {
+    double progress = 1.0,
+  }) {
     final minRow = arrow.path.map((p) => p.row).reduce(min);
     final maxRow = arrow.path.map((p) => p.row).reduce(max);
     final minCol = arrow.path.map((p) => p.col).reduce(min);
@@ -625,6 +918,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
           headDirection: arrow.headDirection,
           color: arrowColor,
           isHinted: isHinted,
+          progress: progress,
         ),
       ),
     );
@@ -632,17 +926,21 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen> {
 
   Widget _buildExitingArrowTile(Arrow arrow, double cellSize) {
     final totalSteps = _stepsToFullyExit(arrow);
+    final isRed = _exitingRedArrows.contains(arrow);
     return _ExitingArrowTile(
       key: ValueKey(arrow),
       arrow: arrow,
       cellSize: cellSize,
       totalSteps: totalSteps,
+      color: isRed ? const Color(0xFFE53935) : const Color(0xFF1A1A2E),
       duration: Duration(milliseconds: 50 * totalSteps),
       onComplete: () {
         if (!mounted) return;
         setState(() {
           _exiting.remove(arrow);
+          _exitingRedArrows.remove(arrow);
         });
+        _checkAutoExitBlockedArrows();
         if (_board.isCleared && _exiting.isEmpty) {
           _showWinDialog();
         }
@@ -657,6 +955,7 @@ class _ExitingArrowTile extends StatefulWidget {
   final int totalSteps;
   final Duration duration;
   final VoidCallback onComplete;
+  final Color color;
 
   const _ExitingArrowTile({
     super.key,
@@ -665,6 +964,7 @@ class _ExitingArrowTile extends StatefulWidget {
     required this.totalSteps,
     required this.duration,
     required this.onComplete,
+    this.color = const Color(0xFF1A1A2E),
   });
 
   @override
@@ -718,7 +1018,7 @@ class _ExitingArrowTileState extends State<_ExitingArrowTile>
                 points: points,
                 headDirection: widget.arrow.headDirection,
                 cellSize: widget.cellSize,
-                color: const Color(0xFF1A1A2E),
+                color: widget.color,
               ),
             );
           },
@@ -774,156 +1074,4 @@ class _TrajectoryRayPainter extends CustomPainter {
         oldDelegate.color != color ||
         oldDelegate.cellSize != cellSize;
   }
-}
-
-/// Shows the bottom sheet allowing the player to select any unlocked level.
-void showLevelSelectSheet({
-  required BuildContext context,
-  required int currentLevel,
-  required ValueChanged<int> onSelectLevel,
-}) {
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (sheetContext) {
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Select Puzzle',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A2E),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(sheetContext).pop(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 1.1,
-                  ),
-                  itemCount: max(20, currentLevel + 4),
-                  itemBuilder: (gridContext, index) {
-                    final levelNum = index + 1;
-                    final isCurrent = levelNum == currentLevel;
-                    final isUnlocked = LevelProgress.isUnlocked(levelNum);
-                    final config = LevelConfig.forLevel(levelNum);
-
-                    return InkWell(
-                      onTap: isUnlocked
-                          ? () {
-                              Navigator.of(sheetContext).pop();
-                              onSelectLevel(levelNum);
-                            }
-                          : () {
-                              ScaffoldMessenger.of(sheetContext).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Stage $levelNum is locked! Complete stage ${levelNum - 1} first.',
-                                  ),
-                                  duration: const Duration(milliseconds: 1200),
-                                  behavior: SnackBarBehavior.floating,
-                                ),
-                              );
-                            },
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: isCurrent
-                              ? const Color(0xFF1A1A2E)
-                              : (isUnlocked
-                                    ? const Color(0xFFF0F0F3)
-                                    : const Color(0xFFEAEAEE)),
-                          borderRadius: BorderRadius.circular(12),
-                          border: isCurrent
-                              ? Border.all(color: Colors.amber, width: 2)
-                              : (isUnlocked
-                                    ? null
-                                    : Border.all(
-                                        color: Colors.grey.shade300,
-                                        width: 1,
-                                      )),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (!isUnlocked) ...[
-                              Icon(
-                                Icons.lock_rounded,
-                                size: 20,
-                                color: Colors.grey.shade400,
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '$levelNum',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade400,
-                                ),
-                              ),
-                            ] else ...[
-                              Text(
-                                '$levelNum',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: isCurrent
-                                      ? Colors.white
-                                      : const Color(0xFF1A1A2E),
-                                ),
-                              ),
-                              Text(
-                                config.shape.name,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: isCurrent
-                                      ? Colors.amber
-                                      : const Color(0xFFFB8500),
-                                ),
-                              ),
-                              Text(
-                                '${config.rows}x${config.cols}',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: isCurrent
-                                      ? Colors.white70
-                                      : Colors.grey.shade600,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  );
 }

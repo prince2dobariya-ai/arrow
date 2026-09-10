@@ -6,6 +6,7 @@
 // unit-testable on its own.
 
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 
 enum Direction { up, down, left, right }
 
@@ -969,15 +970,63 @@ class LevelProgress {
   /// True if [level] is unlocked and accessible to play.
   static bool isUnlocked(int level) => level <= highestUnlockedLevel;
 
-  /// Call when [level] is cleared to unlock the next level.
-  static void completeLevel(int level) {
+  /// Call when [level] is cleared to unlock the next level and award star money.
+  static void completeLevel(int level, [int stars = 0]) {
     if (level >= highestUnlockedLevel) {
       highestUnlockedLevel = level + 1;
     }
+    if (stars > 0) {
+      StarMoney.add(stars);
+    }
   }
 
-  /// Resets progression back to Level 1 unlocked.
+  /// Resets progression back to Level 1 unlocked and resets Star Money.
   static void reset() {
     highestUnlockedLevel = 1;
+    StarMoney.reset();
+  }
+}
+
+/// Star Money system: tracks stars earned by completing levels and adds
+/// them to the player's Star Money balance.
+///
+/// Example:
+/// - Complete a level with 3 stars -> +3 Star Money
+/// - Complete a level with 2 stars -> +2 Star Money
+/// - Complete a level with 1 star  -> +1 Star Money
+class StarMoney {
+  static int _balance = 0;
+  static final ValueNotifier<int> notifier = ValueNotifier<int>(0);
+
+  /// Current total Star Money balance.
+  static int get balance => _balance;
+
+  static set balance(int value) {
+    _balance = max(0, value);
+    notifier.value = _balance;
+  }
+
+  /// Adds stars earned from a completed level to Star Money balance.
+  static void add(int stars) {
+    if (stars > 0) {
+      _balance += stars;
+      notifier.value = _balance;
+    }
+  }
+
+  /// Attempts to spend [amount] Star Money. Returns true if successful.
+  static bool spend(int amount) {
+    if (amount > 0 && _balance >= amount) {
+      _balance -= amount;
+      notifier.value = _balance;
+      return true;
+    }
+    return false;
+  }
+
+  /// Resets Star Money balance to 0.
+  static void reset() {
+    _balance = 0;
+    notifier.value = 0;
   }
 }

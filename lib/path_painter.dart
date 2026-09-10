@@ -25,20 +25,27 @@ class DottedGridPainter extends CustomPainter {
   final double dotRadius;
   final Set<Pos>? activeCells;
   final Set<Pos>? occupiedCells;
+  final double progress;
 
   DottedGridPainter({
     required this.rows,
     required this.cols,
     required this.cellSize,
-    this.dotColor = const Color(0xFFD8D8DC),
+    this.dotColor = Colors.grey,
     double? dotRadius,
     this.activeCells,
     this.occupiedCells,
+    this.progress = 1.0,
   }) : dotRadius = dotRadius ?? (cellSize * 0.045).clamp(1.0, 1.8);
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (progress <= 0.0) return;
+
     final dotPaint = Paint()..color = dotColor;
+    final centerR = rows / 2.0;
+    final centerC = cols / 2.0;
+    final maxDist = sqrt(centerR * centerR + centerC * centerC);
 
     for (int r = 0; r < rows; r++) {
       for (int c = 0; c < cols; c++) {
@@ -50,11 +57,31 @@ class DottedGridPainter extends CustomPainter {
         if (occupiedCells != null && occupiedCells!.contains(pos)) {
           continue;
         }
+
+        double currentDotRadius = dotRadius;
+        Paint currentDotPaint = dotPaint;
+
+        if (progress < 1.0) {
+          final dist = sqrt(
+            pow(r + 0.5 - centerR, 2) + pow(c + 0.5 - centerC, 2),
+          );
+          final normDist = (dist / max(1.0, maxDist)).clamp(0.0, 1.0);
+          final dotProgress = ((progress - normDist * 0.35) / 0.65).clamp(
+            0.0,
+            1.0,
+          );
+          if (dotProgress <= 0.0) continue;
+
+          currentDotRadius = dotRadius * dotProgress;
+          currentDotPaint = Paint()
+            ..color = dotColor.withValues(alpha: dotColor.a * dotProgress);
+        }
+
         final center = Offset(
           c * cellSize + cellSize / 2,
           r * cellSize + cellSize / 2,
         );
-        canvas.drawCircle(center, dotRadius, dotPaint);
+        canvas.drawCircle(center, currentDotRadius, currentDotPaint);
       }
     }
   }
@@ -66,7 +93,8 @@ class DottedGridPainter extends CustomPainter {
         oldDelegate.cellSize != cellSize ||
         oldDelegate.dotColor != dotColor ||
         oldDelegate.activeCells != activeCells ||
-        oldDelegate.occupiedCells != occupiedCells;
+        oldDelegate.occupiedCells != occupiedCells ||
+        oldDelegate.progress != progress;
   }
 }
 
@@ -90,6 +118,8 @@ class ArrowPathPainter extends CustomPainter {
   /// note in paint() for why we don't fall back to path geometry.
   final Direction headDirection;
 
+  final double progress;
+
   ArrowPathPainter({
     required this.points,
     required this.headDirection,
@@ -99,6 +129,7 @@ class ArrowPathPainter extends CustomPainter {
     this.arrowHeadLength,
     this.arrowHeadWidth,
     this.isHinted = false,
+    this.progress = 1.0,
   }) : assert(points.isNotEmpty, 'An arrow path needs at least 1 point');
 
   @override
@@ -115,12 +146,12 @@ class ArrowPathPainter extends CustomPainter {
 
     // UNIFORM styling across ALL arrows on the board:
     // Every arrow (single-cell or multi-cell) shares the exact same
-    final effStroke = strokeWidth ?? (effectiveCell * 0.088).clamp(2.0, 3.4);
+    final effStroke = strokeWidth ?? (effectiveCell * 0.115).clamp(2.6, 5.0);
     final effHeadLen =
-        arrowHeadLength ?? (effectiveCell * 0.22).clamp(5.0, 9.5);
+        arrowHeadLength ?? (effectiveCell * 0.27).clamp(6.5, 14.0);
     final effHeadWid =
-        arrowHeadWidth ?? (effectiveCell * 0.28).clamp(6.5, 12.0);
-    final filletRadius = (effectiveCell * 0.32).clamp(3.0, 8.5);
+        arrowHeadWidth ?? (effectiveCell * 0.35).clamp(8.5, 18.0);
+    final filletRadius = (effectiveCell * 0.34).clamp(3.5, 10.5);
 
     final linePaint = Paint()
       ..color = color
@@ -130,39 +161,64 @@ class ArrowPathPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
 
     if (points.length == 1) {
-      final totalLength = (effectiveCell * 0.60).clamp(10.0, 24.0);
+      final totalLength = (effectiveCell * 0.68).clamp(12.0, 32.0);
       final center = points.first;
       final tip = center + dirNorm * (totalLength * 0.5);
       final baseCenter = tip - dirNorm * effHeadLen;
       final tail = center - dirNorm * (totalLength * 0.5);
 
-      if (isHinted) {
-        final glowPaint = Paint()
-          ..color = const Color(0xFFFFB703).withValues(alpha: 0.55)
-          ..strokeWidth = effStroke * 2.6
-          ..style = PaintingStyle.stroke
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round;
-        canvas.drawLine(tail, baseCenter, glowPaint);
+      if (progress >= 1.0) {
+        if (isHinted) {
+          final glowPaint = Paint()
+            ..color = const Color(0xFFFFB703).withValues(alpha: 0.55)
+            ..strokeWidth = effStroke * 2.6
+            ..style = PaintingStyle.stroke
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round;
+          canvas.drawLine(tail, baseCenter, glowPaint);
+          _drawArrowHead(
+            canvas,
+            tip: tip,
+            direction: dirNorm,
+            length: effHeadLen,
+            width: effHeadWid,
+            customPaint: glowPaint,
+          );
+        }
+
+        // Draw straight shaft from tail to base of triangle
+        canvas.drawLine(tail, baseCenter, linePaint);
         _drawArrowHead(
           canvas,
           tip: tip,
           direction: dirNorm,
           length: effHeadLen,
           width: effHeadWid,
-          customPaint: glowPaint,
         );
+        return;
       }
 
-      // Draw straight shaft from tail to base of triangle
-      canvas.drawLine(tail, baseCenter, linePaint);
-      _drawArrowHead(
-        canvas,
-        tip: tip,
-        direction: dirNorm,
-        length: effHeadLen,
-        width: effHeadWid,
-      );
+      if (progress <= 0.0) return;
+
+      final curHeadScale = (progress / 0.35).clamp(0.0, 1.0);
+      final curHeadLen = effHeadLen * curHeadScale;
+      final curHeadWid = effHeadWid * curHeadScale;
+
+      final curShaftEnd = tail + (baseCenter - tail) * progress;
+      final curTip = curShaftEnd + dirNorm * curHeadLen;
+
+      if ((curShaftEnd - tail).distance > 0.5) {
+        canvas.drawLine(tail, curShaftEnd, linePaint);
+      }
+      if (curHeadScale > 0.05) {
+        _drawArrowHead(
+          canvas,
+          tip: curTip,
+          direction: dirNorm,
+          length: curHeadLen,
+          width: curHeadWid,
+        );
+      }
       return;
     }
 
@@ -182,12 +238,12 @@ class ArrowPathPainter extends CustomPainter {
     final List<Offset> shaftPoints;
 
     if (sameDirection) {
-      tip = last + dirNorm * (effectiveCell * 0.28);
+      tip = last + dirNorm * (effectiveCell * 0.32);
       baseCenter = tip - dirNorm * effHeadLen;
       shaftPoints = List<Offset>.from(points);
       shaftPoints[shaftPoints.length - 1] = baseCenter;
     } else {
-      final stubTip = last + dirNorm * (effectiveCell * 0.28);
+      final stubTip = last + dirNorm * (effectiveCell * 0.32);
       tip = stubTip;
       baseCenter = tip - dirNorm * effHeadLen;
       shaftPoints = List<Offset>.from(points)..add(baseCenter);
@@ -195,32 +251,71 @@ class ArrowPathPainter extends CustomPainter {
 
     final path = _buildFilletedPath(shaftPoints, filletRadius);
 
-    if (isHinted) {
-      final glowPaint = Paint()
-        ..color = const Color(0xFFFFB703).withValues(alpha: 0.55)
-        ..strokeWidth = effStroke * 2.6
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round;
-      canvas.drawPath(path, glowPaint);
+    if (progress >= 1.0) {
+      if (isHinted) {
+        final glowPaint = Paint()
+          ..color = const Color(0xFFFFB703).withValues(alpha: 0.55)
+          ..strokeWidth = effStroke * 2.6
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+        canvas.drawPath(path, glowPaint);
+        _drawArrowHead(
+          canvas,
+          tip: tip,
+          direction: dirNorm,
+          length: effHeadLen,
+          width: effHeadWid,
+          customPaint: glowPaint,
+        );
+      }
+
+      canvas.drawPath(path, linePaint);
       _drawArrowHead(
         canvas,
         tip: tip,
         direction: dirNorm,
         length: effHeadLen,
         width: effHeadWid,
-        customPaint: glowPaint,
       );
+      return;
     }
 
-    canvas.drawPath(path, linePaint);
-    _drawArrowHead(
-      canvas,
-      tip: tip,
-      direction: dirNorm,
-      length: effHeadLen,
-      width: effHeadWid,
-    );
+    if (progress <= 0.0) return;
+
+    final metrics = path.computeMetrics().toList();
+    if (metrics.isEmpty) return;
+
+    final metric = metrics.first;
+    final totalLen = metric.length;
+    final currentLen = totalLen * progress.clamp(0.0, 1.0);
+    final drawnPath = metric.extractPath(0.0, currentLen);
+
+    canvas.drawPath(drawnPath, linePaint);
+
+    final headScale = (progress / 0.3).clamp(0.0, 1.0);
+    if (headScale > 0.05) {
+      final tangent = metric.getTangentForOffset(currentLen);
+      if (tangent != null) {
+        final blend = ((progress - 0.75) / 0.25).clamp(0.0, 1.0);
+        final tDir = tangent.vector;
+        final blendedDir = tDir * (1.0 - blend) + dirNorm * blend;
+        final forwardDir = blendedDir.distance == 0
+            ? dirNorm
+            : blendedDir / blendedDir.distance;
+
+        final currentTip =
+            tangent.position + forwardDir * (effHeadLen * headScale);
+
+        _drawArrowHead(
+          canvas,
+          tip: currentTip,
+          direction: forwardDir,
+          length: effHeadLen * headScale,
+          width: effHeadWid * headScale,
+        );
+      }
+    }
   }
 
   Offset _unitOffsetFor(Direction d) {
@@ -294,8 +389,8 @@ class ArrowPathPainter extends CustomPainter {
     double? width,
     Paint? customPaint,
   }) {
-    final headLen = length ?? (arrowHeadLength ?? 8.0);
-    final headWid = width ?? (arrowHeadWidth ?? 10.0);
+    final headLen = length ?? (arrowHeadLength ?? 10.0);
+    final headWid = width ?? (arrowHeadWidth ?? 13.0);
 
     // Perpendicular vector for the triangle base
     final perp = Offset(-direction.dy, direction.dx);
@@ -342,15 +437,15 @@ class ArrowPathPainter extends CustomPainter {
     final effectiveCell = cellSize > 0 ? cellSize : 32.0;
     final dirNorm = _unitOffsetFor(headDirection);
     final effHeadLen =
-        arrowHeadLength ?? (effectiveCell * 0.20).clamp(4.5, 8.5);
+        arrowHeadLength ?? (effectiveCell * 0.27).clamp(6.5, 14.0);
     final effHeadWid =
-        arrowHeadWidth ?? (effectiveCell * 0.26).clamp(5.5, 10.5);
+        arrowHeadWidth ?? (effectiveCell * 0.35).clamp(8.5, 18.0);
     // Hit radius ensures tap is directly on the arrow shaft or head,
     // covering the cell thickness while rejecting empty grid cells.
-    final hitRadius = max(effHeadWid * 1.1, effectiveCell * 0.52);
+    final hitRadius = max(effHeadWid * 1.1, effectiveCell * 0.55);
 
     if (points.length == 1) {
-      final totalLength = (effectiveCell * 0.60).clamp(10.0, 24.0);
+      final totalLength = (effectiveCell * 0.68).clamp(12.0, 32.0);
       final center = points.first;
       final tip = center + dirNorm * (totalLength * 0.5);
       final baseCenter = tip - dirNorm * effHeadLen;
@@ -381,7 +476,7 @@ class ArrowPathPainter extends CustomPainter {
     }
 
     final last = points.last;
-    final tip = last + dirNorm * (effectiveCell * 0.28);
+    final tip = last + dirNorm * (effectiveCell * 0.32);
     final baseCenter = tip - dirNorm * effHeadLen;
     final perp = Offset(-dirNorm.dy, dirNorm.dx);
     final cornerLeft = baseCenter + perp * (effHeadWid / 2);
@@ -408,7 +503,8 @@ class ArrowPathPainter extends CustomPainter {
         oldDelegate.arrowHeadLength != arrowHeadLength ||
         oldDelegate.arrowHeadWidth != arrowHeadWidth ||
         oldDelegate.isHinted != isHinted ||
-        oldDelegate.cellSize != cellSize;
+        oldDelegate.cellSize != cellSize ||
+        oldDelegate.progress != progress;
   }
 }
 
@@ -427,6 +523,7 @@ class ArrowPathWidget extends StatelessWidget {
   /// core model). Always drives the arrowhead's drawn direction — this
   /// must match whatever direction you move the arrow on tap.
   final Direction headDirection;
+  final double progress;
 
   const ArrowPathWidget({
     super.key,
@@ -435,6 +532,7 @@ class ArrowPathWidget extends StatelessWidget {
     required this.headDirection,
     this.color = const Color(0xFF1A1A2E),
     this.isHinted = false,
+    this.progress = 1.0,
   });
 
   @override
@@ -455,6 +553,7 @@ class ArrowPathWidget extends StatelessWidget {
         headDirection: headDirection,
         cellSize: cellSize,
         isHinted: isHinted,
+        progress: progress,
       ),
     );
   }
