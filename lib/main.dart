@@ -1,9 +1,15 @@
-import 'home_screen.dart';
 import 'package:flutter/material.dart';
+import 'home_screen.dart';
+import 'progress_storage.dart';
+import 'core.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await ProgressStorage.init();
+  LevelProgress.loadFromStorage();
   runApp(const MyApp());
 }
+
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});

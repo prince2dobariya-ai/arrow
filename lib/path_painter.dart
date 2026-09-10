@@ -146,11 +146,11 @@ class ArrowPathPainter extends CustomPainter {
 
     // UNIFORM styling across ALL arrows on the board:
     // Every arrow (single-cell or multi-cell) shares the exact same
-    final effStroke = strokeWidth ?? (effectiveCell * 0.115).clamp(2.6, 5.0);
+    final effStroke = strokeWidth ?? (effectiveCell * 0.145).clamp(3.2, 6.5);
     final effHeadLen =
-        arrowHeadLength ?? (effectiveCell * 0.27).clamp(6.5, 14.0);
+        arrowHeadLength ?? (effectiveCell * 0.33).clamp(8.0, 17.0);
     final effHeadWid =
-        arrowHeadWidth ?? (effectiveCell * 0.35).clamp(8.5, 18.0);
+        arrowHeadWidth ?? (effectiveCell * 0.42).clamp(10.5, 22.0);
     final filletRadius = (effectiveCell * 0.34).clamp(3.5, 10.5);
 
     final linePaint = Paint()
@@ -161,7 +161,7 @@ class ArrowPathPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
 
     if (points.length == 1) {
-      final totalLength = (effectiveCell * 0.68).clamp(12.0, 32.0);
+      final totalLength = (effectiveCell * 0.74).clamp(14.0, 36.0);
       final center = points.first;
       final tip = center + dirNorm * (totalLength * 0.5);
       final baseCenter = tip - dirNorm * effHeadLen;
@@ -437,15 +437,15 @@ class ArrowPathPainter extends CustomPainter {
     final effectiveCell = cellSize > 0 ? cellSize : 32.0;
     final dirNorm = _unitOffsetFor(headDirection);
     final effHeadLen =
-        arrowHeadLength ?? (effectiveCell * 0.27).clamp(6.5, 14.0);
+        arrowHeadLength ?? (effectiveCell * 0.33).clamp(8.0, 17.0);
     final effHeadWid =
-        arrowHeadWidth ?? (effectiveCell * 0.35).clamp(8.5, 18.0);
+        arrowHeadWidth ?? (effectiveCell * 0.42).clamp(10.5, 22.0);
     // Hit radius ensures tap is directly on the arrow shaft or head,
     // covering the cell thickness while rejecting empty grid cells.
     final hitRadius = max(effHeadWid * 1.1, effectiveCell * 0.55);
 
     if (points.length == 1) {
-      final totalLength = (effectiveCell * 0.68).clamp(12.0, 32.0);
+      final totalLength = (effectiveCell * 0.74).clamp(14.0, 36.0);
       final center = points.first;
       final tip = center + dirNorm * (totalLength * 0.5);
       final baseCenter = tip - dirNorm * effHeadLen;

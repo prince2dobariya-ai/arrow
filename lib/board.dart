@@ -67,7 +67,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
     _transformationController = TransformationController();
     _introController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2000),
+      duration: const Duration(milliseconds: 1800),
     );
     _boardZoomAnimation = Tween<double>(begin: 1.5, end: 0.9).animate(
       CurvedAnimation(parent: _introController, curve: Curves.easeOutCubic),
@@ -86,6 +86,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
       );
     }
     _currentLevel = widget.initialLevel;
+    LevelProgress.setCurrentLevel(_currentLevel);
     _board = widget.board ?? LevelGenerator.generateLevel(_currentLevel);
     _introController.forward();
   }
@@ -107,6 +108,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
       }
       return;
     }
+    LevelProgress.setCurrentLevel(nextLevel);
     final newBoard = LevelGenerator.generateLevel(nextLevel);
     _transformationController.value = Matrix4.identity();
     _holdTimer?.cancel();

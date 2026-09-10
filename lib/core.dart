@@ -7,6 +7,7 @@
 
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'progress_storage.dart';
 
 enum Direction { up, down, left, right }
 
@@ -966,34 +967,62 @@ class BoardShape {
 /// sequentially as the player clears previous levels.
 class LevelProgress {
   static int highestUnlockedLevel = 1;
+  static int currentLevel = 1;
+  static Map<int, int> levelStars = {};
 
   /// True if [level] is unlocked and accessible to play.
   static bool isUnlocked(int level) => level <= highestUnlockedLevel;
 
+  /// Loads saved values from ProgressStorage into in-memory properties.
+  static void loadFromStorage() {
+    highestUnlockedLevel = ProgressStorage.highestUnlockedLevel;
+    currentLevel = ProgressStorage.currentLevel;
+    levelStars = Map.from(ProgressStorage.levelStars);
+    StarMoney.loadFromStorage();
+  }
+
+  /// Returns stars earned for [level] (0 if not played/cleared yet).
+  static int starsForLevel(int level) => levelStars[level] ?? 0;
+
+  /// Updates the current active level being played and persists it.
+  static Future<void> setCurrentLevel(int level) async {
+    currentLevel = level;
+    await ProgressStorage.saveCurrentLevel(level);
+  }
+
   /// Call when [level] is cleared to unlock the next level and award star money.
-  static void completeLevel(int level, [int stars = 0]) {
+  static Future<void> completeLevel(int level, [int stars = 0]) async {
+    if (stars > 0) {
+      final existingStars = levelStars[level] ?? 0;
+      if (stars > existingStars) {
+        levelStars[level] = stars;
+      }
+      await StarMoney.add(stars);
+    }
     if (level >= highestUnlockedLevel) {
       highestUnlockedLevel = level + 1;
     }
-    if (stars > 0) {
-      StarMoney.add(stars);
-    }
+    currentLevel = level + 1;
+    await ProgressStorage.saveAll(
+      highestUnlocked: highestUnlockedLevel,
+      currentLvl: currentLevel,
+      starBalance: StarMoney.balance,
+      starsMap: levelStars,
+    );
   }
 
   /// Resets progression back to Level 1 unlocked and resets Star Money.
-  static void reset() {
+  static Future<void> reset() async {
     highestUnlockedLevel = 1;
-    StarMoney.reset();
+    currentLevel = 1;
+    levelStars.clear();
+    await StarMoney.reset();
+    await ProgressStorage.resetAll();
   }
 }
 
 /// Star Money system: tracks stars earned by completing levels and adds
 /// them to the player's Star Money balance.
-///
-/// Example:
-/// - Complete a level with 3 stars -> +3 Star Money
-/// - Complete a level with 2 stars -> +2 Star Money
-/// - Complete a level with 1 star  -> +1 Star Money
 class StarMoney {
   static int _balance = 0;
   static final ValueNotifier<int> notifier = ValueNotifier<int>(0);
@@ -1001,32 +1030,43 @@ class StarMoney {
   /// Current total Star Money balance.
   static int get balance => _balance;
 
-  static set balance(int value) {
-    _balance = max(0, value);
+  /// Sync balance from stored values.
+  static void loadFromStorage() {
+    _balance = ProgressStorage.starMoney;
     notifier.value = _balance;
   }
 
+  static set balance(int value) {
+    _balance = max(0, value);
+    notifier.value = _balance;
+    ProgressStorage.saveStarMoney(_balance);
+  }
+
   /// Adds stars earned from a completed level to Star Money balance.
-  static void add(int stars) {
+  static Future<void> add(int stars) async {
     if (stars > 0) {
       _balance += stars;
       notifier.value = _balance;
+      await ProgressStorage.saveStarMoney(_balance);
     }
   }
 
   /// Attempts to spend [amount] Star Money. Returns true if successful.
-  static bool spend(int amount) {
+  static Future<bool> spend(int amount) async {
     if (amount > 0 && _balance >= amount) {
       _balance -= amount;
       notifier.value = _balance;
+      await ProgressStorage.saveStarMoney(_balance);
       return true;
     }
     return false;
   }
 
   /// Resets Star Money balance to 0.
-  static void reset() {
+  static Future<void> reset() async {
     _balance = 0;
     notifier.value = 0;
+    await ProgressStorage.saveStarMoney(0);
   }
 }
+

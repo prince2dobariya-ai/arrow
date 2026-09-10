@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core.dart';
@@ -13,7 +14,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   void _startGame([int? level]) {
     HapticFeedback.selectionClick();
-    final targetLevel = level ?? LevelProgress.highestUnlockedLevel;
+    final targetLevel = level ?? LevelProgress.currentLevel;
+    LevelProgress.setCurrentLevel(targetLevel);
     Navigator.of(context)
         .push(
           MaterialPageRoute(
@@ -24,6 +26,169 @@ class _HomeScreenState extends State<HomeScreen> {
           // Re-render when returning to home so unlocked levels and progress update
           if (mounted) setState(() {});
         });
+  }
+
+  void _showLevelSelectModal() {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A2E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        final highestUnlocked = LevelProgress.highestUnlockedLevel;
+        final totalLevelsToShow = max(highestUnlocked + 5, 15);
+
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) {
+            return Column(
+              children: [
+                const SizedBox(height: 12),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Select Stage',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white70,
+                        ),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: GridView.builder(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          crossAxisSpacing: 14,
+                          mainAxisSpacing: 14,
+                          childAspectRatio: 1.0,
+                        ),
+                    itemCount: totalLevelsToShow,
+                    itemBuilder: (context, index) {
+                      final levelNum = index + 1;
+                      final isUnlocked = LevelProgress.isUnlocked(levelNum);
+                      final stars = LevelProgress.starsForLevel(levelNum);
+                      final isCurrent = levelNum == LevelProgress.currentLevel;
+
+                      return InkWell(
+                        onTap: isUnlocked
+                            ? () {
+                                Navigator.of(context).pop();
+                                _startGame(levelNum);
+                              }
+                            : null,
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isUnlocked
+                                ? (isCurrent
+                                      ? const Color(
+                                          0xFFFFB703,
+                                        ).withValues(alpha: 0.25)
+                                      : Colors.white.withValues(alpha: 0.08))
+                                : Colors.white.withValues(alpha: 0.03),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isCurrent
+                                  ? const Color(0xFFFFB703)
+                                  : (isUnlocked
+                                        ? Colors.white.withValues(alpha: 0.15)
+                                        : Colors.white.withValues(alpha: 0.05)),
+                              width: isCurrent ? 2.0 : 1.0,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (isUnlocked) ...[
+                                Text(
+                                  '$levelNum',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: isCurrent
+                                        ? const Color(0xFFFFB703)
+                                        : Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: List.generate(3, (sIdx) {
+                                    return Icon(
+                                      sIdx < stars
+                                          ? Icons.star_rounded
+                                          : Icons.star_border_rounded,
+                                      size: 14,
+                                      color: sIdx < stars
+                                          ? const Color(0xFFFFB703)
+                                          : Colors.white30,
+                                    );
+                                  }),
+                                ),
+                              ] else ...[
+                                const Icon(
+                                  Icons.lock_outline_rounded,
+                                  color: Colors.white30,
+                                  size: 24,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '$levelNum',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.white30,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showHowToPlay() {
@@ -170,7 +335,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUnlocked = LevelProgress.highestUnlockedLevel;
+    final activeLevel = LevelProgress.currentLevel;
 
     return Scaffold(
       body: Container(
@@ -314,7 +479,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           child: Text(
-                            'Level $currentUnlocked',
+                            'Level $activeLevel',
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w600,
@@ -393,11 +558,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             const Icon(Icons.play_arrow_rounded, size: 30),
                             const SizedBox(width: 8),
                             Text(
-                              currentUnlocked == 1 ? 'PLAY GAME' : 'CONTINUE',
+                              activeLevel == 1 &&
+                                      LevelProgress.starsForLevel(1) == 0
+                                  ? 'PLAY GAME'
+                                  : 'CONTINUE (STAGE $activeLevel)',
                               style: const TextStyle(
-                                fontSize: 17,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w900,
-                                letterSpacing: 1.0,
+                                letterSpacing: 0.8,
                               ),
                             ),
                           ],
@@ -405,7 +573,44 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
+
+                    // 2. Select Level Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.20),
+                            width: 1.2,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          backgroundColor: Colors.white.withValues(alpha: 0.05),
+                        ),
+                        onPressed: _showLevelSelectModal,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            Icon(Icons.grid_view_rounded, size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              'SELECT STAGE',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
 
                     // 3. How to Play Button
                     SizedBox(
