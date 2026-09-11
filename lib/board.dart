@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core.dart';
 import 'path_painter.dart';
+import 'grid_line_painter.dart';
 
 class ArrowPuzzleScreen extends StatefulWidget {
   final Board? board;
@@ -33,7 +34,7 @@ class ArrowPuzzleScreen extends StatefulWidget {
 }
 
 class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late Board _board;
   late int _currentLevel;
   final LevelScore _score = LevelScore();
@@ -42,6 +43,9 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
   late final AnimationController _introController;
   late final Animation<double> _boardZoomAnimation;
   late final Animation<double> _boardFadeAnimation;
+
+  bool _showArrowGrid = false;
+  late final AnimationController _gridAnimationController;
 
   // Arrows currently playing their snake-track exit animation.
   final Set<Arrow> _exiting = {};
@@ -77,6 +81,12 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
         parent: _introController,
         curve: const Interval(0.0, 0.35, curve: Curves.easeOut),
       ),
+    );
+
+    _gridAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+      value: 0.0,
     );
 
     if (widget.initialUnlockedLevel != null) {
@@ -488,21 +498,407 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
 
   void _showFailDialog() {
     HapticFeedback.vibrate();
-    showDialog(
+    showGeneralDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text('Out of hearts'),
-        content: const Text('Try again?'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              HapticFeedback.selectionClick();
-              Navigator.of(context).pop();
-              loadLevelNumber(_currentLevel);
-            },
-            child: const Text('Retry'),
+      barrierLabel: 'Out of Moves',
+      barrierColor: Colors.black.withValues(alpha: 0.65),
+      transitionDuration: const Duration(milliseconds: 320),
+      transitionBuilder: (context, anim1, anim2, child) {
+        final curved = CurvedAnimation(
+          parent: anim1,
+          curve: Curves.easeOutBack,
+        );
+        return ScaleTransition(
+          scale: curved,
+          child: FadeTransition(opacity: anim1, child: child),
+        );
+      },
+      pageBuilder: (dialogContext, anim1, anim2) {
+        return _buildOutOfMovesDialog();
+      },
+    );
+  }
+
+  Widget _buildOutOfMovesDialog() {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.topCenter,
+        children: [
+          // Main Container Card
+          Container(
+            margin: const EdgeInsets.only(top: 40),
+            padding: const EdgeInsets.fromLTRB(24, 52, 24, 24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1A2E),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.12),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  blurRadius: 28,
+                  offset: const Offset(0, 12),
+                ),
+                BoxShadow(
+                  color: const Color(0xFFEF4444).withValues(alpha: 0.16),
+                  blurRadius: 36,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'OUT OF MOVES',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'You ran out of hearts! Arrows collided.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.white.withValues(alpha: 0.70),
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Stats Dashboard Inset
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      // Stage
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'STAGE',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withValues(alpha: 0.45),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$_currentLevel',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        width: 1,
+                        height: 28,
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                      // Hearts
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'HEARTS',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withValues(alpha: 0.45),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: List.generate(
+                              3,
+                              (_) => const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 1.5),
+                                child: Icon(
+                                  Icons.heart_broken_rounded,
+                                  size: 18,
+                                  color: Color(0xFFEF4444),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        width: 1,
+                        height: 28,
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                      // Remaining
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'REMAINING',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withValues(alpha: 0.45),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.near_me_rounded,
+                                size: 14,
+                                color: Color(0xFF38BDF8),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${_board.arrows.length}',
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 22),
+
+                // Revive Option (Spend Stars to continue)
+                ValueListenableBuilder<int>(
+                  valueListenable: StarMoney.notifier,
+                  builder: (context, balance, _) {
+                    const reviveCost = 5;
+                    final canRevive = balance >= reviveCost;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: canRevive
+                                ? const Color(0xFF3B82F6)
+                                : Colors.white.withValues(alpha: 0.08),
+                            foregroundColor: Colors.white,
+                            elevation: canRevive ? 4 : 0,
+                            shadowColor: const Color(
+                              0xFF3B82F6,
+                            ).withValues(alpha: 0.4),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          onPressed: canRevive
+                              ? () async {
+                                  final navigator = Navigator.of(context);
+                                  final spent = await StarMoney.spend(
+                                    reviveCost,
+                                  );
+                                  if (spent && mounted) {
+                                    HapticFeedback.mediumImpact();
+                                    navigator.pop();
+                                    setState(() {
+                                      _score.heartsLost = 2; // Restore 1 heart
+                                    });
+                                  }
+                                }
+                              : null,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.favorite_rounded,
+                                size: 18,
+                                color: Color(0xFFFF5252),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'REVIVE (+1 LIFE)',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.25),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.stars_rounded,
+                                      size: 14,
+                                      color: Color(0xFFFFB703),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '$reviveCost',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: canRevive
+                                            ? const Color(0xFFFFB703)
+                                            : Colors.white38,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
+                // Primary Try Again Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFB703),
+                      foregroundColor: const Color(0xFF1A1A2E),
+                      elevation: 6,
+                      shadowColor: const Color(
+                        0xFFFFB703,
+                      ).withValues(alpha: 0.35),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      Navigator.of(context).pop();
+                      loadLevelNumber(_currentLevel);
+                    },
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.replay_rounded, size: 22),
+                        SizedBox(width: 8),
+                        Text(
+                          'TRY AGAIN',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Secondary Stage Select Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white60,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      Navigator.of(context).pop();
+                      if (Navigator.of(context).canPop()) {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.grid_view_rounded, size: 17),
+                        SizedBox(width: 6),
+                        Text(
+                          'Stage Select',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Overhanging Floating Broken Heart Badge
+          Positioned(
+            top: 0,
+            child: Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFFF6B6B), Color(0xFFDC2626)],
+                ),
+                border: Border.all(color: const Color(0xFF1A1A2E), width: 5),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFDC2626).withValues(alpha: 0.50),
+                    blurRadius: 22,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.heart_broken_rounded,
+                  color: Colors.white,
+                  size: 40,
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -531,6 +927,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
   @override
   void dispose() {
     _introController.dispose();
+    _gridAnimationController.dispose();
     _holdTimer?.cancel();
     _transformationController.dispose();
     super.dispose();
@@ -539,6 +936,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFEAEDF6),
       appBar: AppBar(
         bottom: PreferredSize(
           preferredSize: const Size(0, 32),
@@ -717,6 +1115,31 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
                                   },
                                 ),
                               ),
+                              AnimatedBuilder(
+                                animation: _gridAnimationController,
+                                builder: (context, _) {
+                                  final gridProgress =
+                                      _gridAnimationController.value * introVal;
+                                  if (gridProgress <= 0.001) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Positioned.fill(
+                                    child: IgnorePointer(
+                                      child: CustomPaint(
+                                        size: Size(boardWidth, boardHeight),
+                                        painter: ArrowGridPainter(
+                                          arrows: _board.arrows,
+                                          isPathClear: _board.pathIsClear,
+                                          cellSize: cellSize,
+                                          boardWidth: boardWidth,
+                                          boardHeight: boardHeight,
+                                          progress: gridProgress,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
                               if (_heldArrow != null)
                                 _buildTrajectoryRay(
                                   _heldArrow!,
@@ -749,68 +1172,95 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const .symmetric(horizontal: 24, vertical: 12),
-          child: Column(
-            spacing: 6,
-            mainAxisSize: .min,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              Row(
-                mainAxisAlignment: .center,
-                spacing: 4,
+              Column(
+                spacing: 6,
+                mainAxisSize: .min,
                 children: [
-                  Icon(Icons.pinch_outlined, size: 12, color: Colors.grey),
-                  Text(
-                    "Pinch & zoom the board",
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  Row(
+                    mainAxisAlignment: .center,
+                    spacing: 4,
+                    children: const [
+                      Icon(Icons.pinch_outlined, size: 12, color: Colors.grey),
+                      Text(
+                        "Pinch & zoom the board",
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              Row(
-                spacing: 24,
-                mainAxisAlignment: .center,
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: .circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+                  Row(
+                    spacing: 24,
+                    mainAxisAlignment: .center,
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: .circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.refresh_rounded),
-                      iconSize: 26,
-                      color: const Color(0xFF1A1A2E),
-                      tooltip: 'Restart',
-                      onPressed: () {
-                        HapticFeedback.selectionClick();
-                        loadLevelNumber(_currentLevel);
-                      },
-                    ),
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+                        child: IconButton(
+                          icon: const Icon(Icons.refresh_rounded),
+                          iconSize: 26,
+                          color: const Color(0xFF1A1A2E),
+                          tooltip: 'Restart',
+                          onPressed: () {
+                            HapticFeedback.selectionClick();
+                            loadLevelNumber(_currentLevel);
+                          },
                         ),
-                      ],
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.lightbulb_outline),
-                      iconSize: 26,
-                      color: const Color(0xFF1A1A2E),
-                      tooltip: 'Hint',
-                      onPressed: _useHint,
-                    ),
+                      ),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.lightbulb_outline),
+                          iconSize: 26,
+                          color: const Color(0xFF1A1A2E),
+                          tooltip: 'Hint',
+                          onPressed: _useHint,
+                        ),
+                      ),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: _showArrowGrid
+                              ? const Color(0xFFBAC4E2)
+                              : Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.grid_3x3),
+                          iconSize: 26,
+                          color: const Color(0xFF1A1A2E),
+                          tooltip: 'Grid',
+                          onPressed: _toggleArrowGrid,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -819,6 +1269,18 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
         ),
       ),
     );
+  }
+
+  void _toggleArrowGrid() {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _showArrowGrid = !_showArrowGrid;
+      if (_showArrowGrid) {
+        _gridAnimationController.forward();
+      } else {
+        _gridAnimationController.reverse();
+      }
+    });
   }
 
   Widget _buildTrajectoryRay(
