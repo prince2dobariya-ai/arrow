@@ -123,8 +123,10 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
     _transformationController.value = Matrix4.identity();
     _holdTimer?.cancel();
     _holdTimer = null;
+    _gridAnimationController.reset();
     _introController.forward(from: 0.0);
     setState(() {
+      _showArrowGrid = false;
       _currentLevel = nextLevel;
       _board = newBoard;
       _exiting.clear();
@@ -146,8 +148,10 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
     _transformationController.value = Matrix4.identity();
     _holdTimer?.cancel();
     _holdTimer = null;
+    _gridAnimationController.reset();
     _introController.forward(from: 0.0);
     setState(() {
+      _showArrowGrid = false;
       if (levelNumber != null) _currentLevel = levelNumber;
       _board = newBoard;
       _exiting.clear();
@@ -393,6 +397,10 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
 
   void _showWinDialog() {
     HapticFeedback.mediumImpact();
+    _gridAnimationController.reset();
+    setState(() {
+      _showArrowGrid = false;
+    });
     final stars = _score.stars;
     LevelProgress.completeLevel(_currentLevel, stars);
     showDialog(
@@ -1129,7 +1137,6 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
                                         size: Size(boardWidth, boardHeight),
                                         painter: ArrowGridPainter(
                                           arrows: _board.arrows,
-                                          isPathClear: _board.pathIsClear,
                                           cellSize: cellSize,
                                           boardWidth: boardWidth,
                                           boardHeight: boardHeight,

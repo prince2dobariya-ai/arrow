@@ -4,11 +4,10 @@ import 'core.dart' show Arrow, Direction;
 /// Custom painter for the "Arrow Grid" feature.
 ///
 /// When toggled on, it renders faint directional guide lines projecting outward
-/// from the arrowheads of all currently unblocked arrows (arrows that have a clear,
-/// unobstructed exit path towards the board edge) all the way to the screen edges.
+/// from the arrowheads of all arrows all the way to the screen edges.
 class ArrowGridPainter extends CustomPainter {
   final List<Arrow> arrows;
-  final bool Function(Arrow arrow) isPathClear;
+  final bool Function(Arrow arrow)? isPathClear;
   final double cellSize;
   final double boardWidth;
   final double boardHeight;
@@ -19,7 +18,7 @@ class ArrowGridPainter extends CustomPainter {
 
   ArrowGridPainter({
     required this.arrows,
-    required this.isPathClear,
+    this.isPathClear,
     required this.cellSize,
     required this.boardWidth,
     required this.boardHeight,
@@ -44,8 +43,6 @@ class ArrowGridPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     for (final arrow in arrows) {
-      if (!isPathClear(arrow)) continue;
-
       final headX = arrow.head.col * cellSize + cellSize / 2;
       final headY = arrow.head.row * cellSize + cellSize / 2;
       final start = Offset(headX, headY);
