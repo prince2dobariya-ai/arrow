@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core.dart';
@@ -38,9 +37,6 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        final highestUnlocked = LevelProgress.highestUnlockedLevel;
-        final totalLevelsToShow = max(highestUnlocked + 5, 15);
-
         return DraggableScrollableSheet(
           initialChildSize: 0.7,
           minChildSize: 0.4,
@@ -98,7 +94,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           mainAxisSpacing: 14,
                           childAspectRatio: 1.0,
                         ),
-                    itemCount: totalLevelsToShow,
                     itemBuilder: (context, index) {
                       final levelNum = index + 1;
                       final isUnlocked = LevelProgress.isUnlocked(levelNum);
@@ -111,7 +106,20 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Navigator.of(context).pop();
                                 _startGame(levelNum);
                               }
-                            : null,
+                            : () {
+                                HapticFeedback.heavyImpact();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Stage $levelNum is locked! Complete stage ${levelNum - 1} first.',
+                                    ),
+                                    duration: const Duration(
+                                      milliseconds: 1400,
+                                    ),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              },
                         borderRadius: BorderRadius.circular(16),
                         child: Container(
                           decoration: BoxDecoration(
