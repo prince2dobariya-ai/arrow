@@ -1184,7 +1184,7 @@ class _ArrowPuzzleScreenState extends State<ArrowPuzzleScreen>
             alignment: Alignment.center,
             children: [
               Column(
-                spacing: 6,
+                spacing: 10,
                 mainAxisSize: .min,
                 children: [
                   Row(

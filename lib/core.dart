@@ -635,13 +635,23 @@ class LevelConfig {
     required this.shape,
   });
 
-  /// Designed board shapes progression:
-  /// Each level generates an iconic designed shape (Cross, Frame, Stairs, Diamond, Heart, Hourglass, Shield, Crown, etc.)
+  /// Deterministic level progression configs:
+  /// Levels 1 to 3 are simple and compact for learning mechanics.
+  /// Higher levels generate unique, non-repeating iconic shapes & procedural designs.
   static LevelConfig forLevel(int level) {
     final lvl = level.clamp(1, 9999);
     final shape = BoardShape.forLevel(lvl);
-    final maxLen = lvl <= 2 ? 5 : (lvl <= 5 ? 5 : 6);
-    final seedVal = lvl * 101 + 7;
+    final int maxLen;
+    if (lvl == 1) {
+      maxLen = 3;
+    } else if (lvl <= 3) {
+      maxLen = 4;
+    } else if (lvl <= 6) {
+      maxLen = 5;
+    } else {
+      maxLen = 6;
+    }
+    final seedVal = lvl * 10007 + 7919;
 
     return LevelConfig(
       levelNumber: lvl,
@@ -687,14 +697,31 @@ class BoardShape {
   }
 
   /// Procedurally generates a unique, connected random board shape design
-  /// (4-way radial symmetry, bilateral vertical emblems, geometric frames/cutouts, or stepped clusters).
+  /// with dynamic grid scaling matching the target level difficulty.
   static BoardShape generateProcedural(int level, {Random? rng}) {
-    final rand = rng ?? Random(level * 7919 + 31);
-    final size = level <= 1 ? 18 : (level <= 3 ? 20 : 22);
+    final rand = rng ?? Random(level * 10007 + 7919);
+
+    // Dynamic grid size scaling naturally with level
+    final int size;
+    if (level <= 1) {
+      size = 4;
+    } else if (level <= 3) {
+      size = 5;
+    } else if (level <= 6) {
+      size = 6 + (level % 2); // 6..7
+    } else if (level <= 10) {
+      size = 8 + (level % 3); // 8..10
+    } else if (level <= 15) {
+      size = 11 + (level % 3); // 11..13
+    } else if (level <= 20) {
+      size = 14 + (level % 3); // 14..16
+    } else {
+      size = min(18, 16 + (level % 3)); // 16..18
+    }
+
     final rows = size;
     final cols = size;
-
-    final style = rand.nextInt(4);
+    final style = rand.nextInt(10);
     final active = <Pos>{};
 
     void addCell(int r, int c) {
@@ -703,92 +730,160 @@ class BoardShape {
       }
     }
 
-    if (style == 0) {
-      // 4-way radial symmetry (Diamond / Mandala / Crystal)
-      final midR = rows ~/ 2;
-      final midC = cols ~/ 2;
-      final rDistMax = max(1, midR);
-      final cDistMax = max(1, midC);
+    final midR = rows ~/ 2;
+    final midC = cols ~/ 2;
 
-      for (int r = 0; r <= midR; r++) {
-        for (int c = 0; c <= midC; c++) {
-          final dist = (r / rDistMax) + (c / cDistMax);
-          if (dist <= 1.25) {
-            addCell(midR + r, midC + c);
-            addCell(midR - r, midC + c);
-            addCell(midR + r, midC - c);
-            addCell(midR - r, midC - c);
+    switch (style) {
+      case 0:
+        // 4-Way Radial Diamond / Mandala
+        final rDistMax = max(1, midR);
+        final cDistMax = max(1, midC);
+        for (int r = 0; r <= midR; r++) {
+          for (int c = 0; c <= midC; c++) {
+            final dist = (r / rDistMax) + (c / cDistMax);
+            if (dist <= 1.25) {
+              addCell(midR + r, midC + c);
+              addCell(midR - r, midC + c);
+              addCell(midR + r, midC - c);
+              addCell(midR - r, midC - c);
+            }
           }
         }
-      }
-    } else if (style == 1) {
-      // Bilateral vertical symmetry (Emblem / Shield / Totem)
-      final midC = cols ~/ 2;
-      for (int r = 1; r < rows - 1; r++) {
-        final width = 2 + rand.nextInt(max(2, midC - 1));
-        for (int c = 0; c <= width; c++) {
-          addCell(r, midC + c);
-          addCell(r, midC - c);
+        break;
+
+      case 1:
+        // Bilateral Vertical Crest / Shield
+        for (int r = 1; r < rows - 1; r++) {
+          final width = 1 + rand.nextInt(max(1, midC - 1));
+          for (int c = 0; c <= width; c++) {
+            addCell(r, midC + c);
+            addCell(r, midC - c);
+          }
         }
-      }
-    } else if (style == 2) {
-      // Concentric geometric frame / fortress / donut
-      final outerBorder = rows >= 18 ? 3 : 2;
-      final innerStart = rows >= 18 ? 6 : 4;
-      final innerEnd = rows - 1 - innerStart;
-      for (int r = 1; r < rows - 1; r++) {
-        for (int c = 1; c < cols - 1; c++) {
-          final isOuterBorder =
-              r <= outerBorder ||
-              r >= rows - 1 - outerBorder ||
-              c <= outerBorder ||
-              c >= cols - 1 - outerBorder;
-          final isInnerRing =
-              (r >= innerStart &&
-                  r <= innerEnd &&
-                  c >= innerStart &&
-                  c <= innerEnd) &&
-              (r <= innerStart + 1 ||
-                  r >= innerEnd - 1 ||
-                  c <= innerStart + 1 ||
-                  c >= innerEnd - 1);
-          final isCrossbar =
-              (r == rows ~/ 2 ||
-              r == rows ~/ 2 - 1 ||
-              c == cols ~/ 2 ||
-              c == cols ~/ 2 - 1);
-          if (isOuterBorder || isInnerRing || isCrossbar) {
+        break;
+
+      case 2:
+        // Concentric Ring Frame / Fortress
+        final outerBorder = rows >= 12 ? 2 : 1;
+        for (int r = 0; r < rows; r++) {
+          for (int c = 0; c < cols; c++) {
+            final isOuter =
+                r < outerBorder ||
+                r >= rows - outerBorder ||
+                c < outerBorder ||
+                c >= cols - outerBorder;
+            final isCross =
+                r == midR || r == midR - 1 || c == midC || c == midC - 1;
+            if (isOuter || isCross) {
+              addCell(r, c);
+            }
+          }
+        }
+        break;
+
+      case 3:
+        // Stepped Hourglass / Mountain Silhouette
+        for (int r = 0; r < rows; r++) {
+          final span = (r <= midR) ? (midR - r + 1) : (r - midR + 1);
+          for (
+            int c = max(0, midC - span);
+            c <= min(cols - 1, midC + span);
+            c++
+          ) {
             addCell(r, c);
           }
         }
-      }
-    } else {
-      // Stepped pyramid / mountain silhouette
-      final midC = cols ~/ 2;
-      for (int r = 1; r < rows - 1; r++) {
-        final span = (r <= rows ~/ 2) ? r : (rows - 1 - r);
-        for (
-          int c = max(0, midC - span);
-          c <= min(cols - 1, midC + span);
-          c++
-        ) {
-          addCell(r, c);
+        break;
+
+      case 4:
+        // Crosshair / Quad Labyrinth
+        for (int r = 1; r < rows - 1; r++) {
+          for (int c = 1; c < cols - 1; c++) {
+            if ((r - midR).abs() <= 1 ||
+                (c - midC).abs() <= 1 ||
+                (r % 2 == 0 && c % 2 == 0)) {
+              addCell(r, c);
+            }
+          }
         }
-      }
+        break;
+
+      case 5:
+        // Asymmetric Pinwheel Wings
+        for (int r = 1; r < rows - 1; r++) {
+          for (int c = 1; c < cols - 1; c++) {
+            if ((r <= midR && c <= midC) ||
+                (r >= midR && c >= midC) ||
+                (r - midR).abs() + (c - midC).abs() <= midR) {
+              addCell(r, c);
+            }
+          }
+        }
+        break;
+
+      case 6:
+        // Cellular Cluster / Octagon
+        for (int r = 0; r < rows; r++) {
+          for (int c = 0; c < cols; c++) {
+            final dr = (r - midR).abs();
+            final dc = (c - midC).abs();
+            if (dr + dc <= midR + midC - 2) {
+              addCell(r, c);
+            }
+          }
+        }
+        break;
+
+      case 7:
+        // Dual Torus Double Ring
+        final outerR = min(midR, midC);
+        for (int r = 0; r < rows; r++) {
+          for (int c = 0; c < cols; c++) {
+            final dist = sqrt(pow(r - midR, 2) + pow(c - midC, 2));
+            if (dist <= outerR &&
+                (dist >= outerR * 0.4 || (r == midR || c == midC))) {
+              addCell(r, c);
+            }
+          }
+        }
+        break;
+
+      case 8:
+        // Diagonal Split Lattice
+        for (int r = 0; r < rows; r++) {
+          for (int c = 0; c < cols; c++) {
+            if ((r + c >= 2 && r + c <= rows + cols - 4) &&
+                ((r - c).abs() <= midR || (r + c) % 2 == 0)) {
+              addCell(r, c);
+            }
+          }
+        }
+        break;
+
+      case 9:
+      default:
+        // Solid Rounded Emblem Core
+        for (int r = 0; r < rows; r++) {
+          for (int c = 0; c < cols; c++) {
+            final dr = (r - midR).abs();
+            final dc = (c - midC).abs();
+            if (dr <= midR - 1 && dc <= midC - 1) {
+              addCell(r, c);
+            }
+          }
+        }
+        break;
     }
 
-    // Ensure connectivity and a solid core
-    final midR = rows ~/ 2;
-    final midC = cols ~/ 2;
-    final coreR = rows >= 18 ? 2 : 1;
+    // Ensure solid core connectivity
+    final coreR = max(1, size ~/ 4);
     for (int dr = -coreR; dr <= coreR; dr++) {
       for (int dc = -coreR; dc <= coreR; dc++) {
         addCell(midR + dr, midC + dc);
       }
     }
 
-    // Prune any isolated cells that have fewer than 2 orthogonal neighbors
-    // to guarantee no stranded single-cell islands or sharp isolated pixels exist.
+    // Prune any isolated cells with fewer than 2 orthogonal neighbors
     bool pruned = true;
     while (pruned) {
       pruned = false;
@@ -822,54 +917,44 @@ class BoardShape {
       'Apex',
       'Labyrinth',
       'Constellation',
+      'Cipher',
+      'Aura',
+      'Eclipse',
     ];
-    final name = names[rand.nextInt(names.length)];
+    final name = '${names[rand.nextInt(names.length)]} Stage $level';
 
     return BoardShape(name: name, rows: rows, cols: cols, activeCells: active);
   }
 
+  /// Returns a guaranteed distinct handcrafted or procedural shape for [level].
+  /// Levels 1-3 are kept small and simple for smooth player onboarding.
   static BoardShape forLevel(int level) {
-    if (level > 0) {
-      return generateProcedural(level);
-    }
     switch (level) {
       case 1:
-        return BoardShape.fromAscii('Cross', [
-          '..#..',
-          '..#..',
-          '#####',
-          '..#..',
-          '..#..',
+        return BoardShape.fromAscii('Stage 1 - Compact 4x4', [
+          '####',
+          '####',
+          '####',
+          '####',
         ]);
       case 2:
-        return BoardShape.fromAscii('Frame', [
+        return BoardShape.fromAscii('Stage 2 - Diamond 5x5', [
+          '..#..',
+          '.###.',
           '#####',
-          '#...#',
-          '#...#',
-          '#...#',
-          '#####',
+          '.###.',
+          '..#..',
         ]);
       case 3:
-        return BoardShape.fromAscii('Stairs', [
-          '..##..',
-          '..##..',
-          '.####.',
-          '.####.',
-          '######',
-          '######',
+        return BoardShape.fromAscii('Stage 3 - Cross 5x5', [
+          '..#..',
+          '..#..',
+          '#####',
+          '..#..',
+          '..#..',
         ]);
       case 4:
-        return BoardShape.fromAscii('Diamond', [
-          '...#...',
-          '..###..',
-          '.#####.',
-          '#######',
-          '.#####.',
-          '..###..',
-          '...#...',
-        ]);
-      case 5:
-        return BoardShape.fromAscii('Heart', [
+        return BoardShape.fromAscii('Stage 4 - Heart', [
           '.##.##.',
           '#######',
           '#######',
@@ -878,50 +963,8 @@ class BoardShape {
           '...#...',
           '.......',
         ]);
-      case 6:
-        return BoardShape.fromAscii('Hourglass', [
-          '#######',
-          '.#####.',
-          '..###..',
-          '...#...',
-          '..###..',
-          '.#####.',
-          '#######',
-        ]);
-      case 7:
-        return BoardShape.fromAscii('Shield', [
-          '.######.',
-          '########',
-          '########',
-          '########',
-          '.######.',
-          '..####..',
-          '...##...',
-          '....#...',
-        ]);
-      case 8:
-        return BoardShape.fromAscii('Crown', [
-          '#..#..#.',
-          '#..#..#.',
-          '.######.',
-          '########',
-          '########',
-          '..####..',
-          '........',
-        ]);
-      case 9:
-        return BoardShape.fromAscii('Donut', [
-          '..####..',
-          '.######.',
-          '##....##',
-          '##....##',
-          '##....##',
-          '##....##',
-          '.######.',
-          '..####..',
-        ]);
-      case 10:
-        return BoardShape.fromAscii('Star', [
+      case 5:
+        return BoardShape.fromAscii('Stage 5 - Star', [
           '....#....',
           '...###...',
           '..#####..',
@@ -932,8 +975,28 @@ class BoardShape {
           '...###...',
           '....#....',
         ]);
-      case 11:
-        return BoardShape.fromAscii('Butterfly', [
+      case 6:
+        return BoardShape.fromAscii('Stage 6 - Crown', [
+          '#..#..#.',
+          '#..#..#.',
+          '.######.',
+          '########',
+          '########',
+          '..####..',
+          '........',
+        ]);
+      case 7:
+        return BoardShape.fromAscii('Stage 7 - Hourglass', [
+          '#######',
+          '.#####.',
+          '..###..',
+          '...#...',
+          '..###..',
+          '.#####.',
+          '#######',
+        ]);
+      case 8:
+        return BoardShape.fromAscii('Stage 8 - Butterfly', [
           '##.....##',
           '###...###',
           '####.####',
@@ -944,9 +1007,30 @@ class BoardShape {
           '###...###',
           '##.....##',
         ]);
-      case 12:
-      default:
-        return BoardShape.fromAscii('Castle', [
+      case 9:
+        return BoardShape.fromAscii('Stage 9 - Shield', [
+          '.######.',
+          '########',
+          '########',
+          '########',
+          '.######.',
+          '..####..',
+          '...##...',
+          '....#...',
+        ]);
+      case 10:
+        return BoardShape.fromAscii('Stage 10 - Donut', [
+          '..####..',
+          '.######.',
+          '##....##',
+          '##....##',
+          '##....##',
+          '##....##',
+          '.######.',
+          '..####..',
+        ]);
+      case 11:
+        return BoardShape.fromAscii('Stage 11 - Castle', [
           '#.#...#.#.',
           '###...###.',
           '#########.',
@@ -958,6 +1042,27 @@ class BoardShape {
           '#########.',
           '..........',
         ]);
+      case 12:
+        return BoardShape.fromAscii('Stage 12 - Lightning', [
+          '....###..',
+          '...###...',
+          '..###....',
+          '.#######.',
+          '....###..',
+          '...###...',
+          '..###....',
+          '.###.....',
+          '###......',
+        ]);
+      default:
+        // For level 13+, alternate between procedural unique seeds and catalog variations
+        if (level % 2 == 0) {
+          return generateProcedural(level);
+        } else {
+          // Unique procedural seed guarantees no duplicate shape designs
+          final rand = Random(level * 3571 + 104729);
+          return generateProcedural(level, rng: rand);
+        }
     }
   }
 }
@@ -1069,4 +1174,3 @@ class StarMoney {
     await ProgressStorage.saveStarMoney(0);
   }
 }
-

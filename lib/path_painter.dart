@@ -524,6 +524,7 @@ class ArrowPathWidget extends StatelessWidget {
   /// must match whatever direction you move the arrow on tap.
   final Direction headDirection;
   final double progress;
+  final double padding;
 
   const ArrowPathWidget({
     super.key,
@@ -533,6 +534,7 @@ class ArrowPathWidget extends StatelessWidget {
     this.color = const Color(0xFF1A1A2E),
     this.isHinted = false,
     this.progress = 1.0,
+    this.padding = 0.0,
   });
 
   @override
@@ -540,8 +542,8 @@ class ArrowPathWidget extends StatelessWidget {
     final points = cellPath
         .map(
           (p) => Offset(
-            p.y * cellSize + cellSize / 2,
-            p.x * cellSize + cellSize / 2,
+            p.y * cellSize + cellSize / 2 + padding,
+            p.x * cellSize + cellSize / 2 + padding,
           ),
         )
         .toList();
